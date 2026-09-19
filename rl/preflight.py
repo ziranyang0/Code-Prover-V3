@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from rl.checkpoint_compat import validate_resume_checkpoint
+from rl.judge_config import add_judge_arguments, preflight_judge
 from rl.provenance import validate_prompt_data
 from rl.sandbox import E2B_SDK_VERSION, e2b_connection_env, load_e2b_api_key
 from rl.source_fingerprint import git_source_fingerprint
@@ -52,6 +53,7 @@ def _require(path: Path, description: str) -> None:
 
 
 def validate(args) -> dict:
+    judge = preflight_judge(args)
     repo = Path(args.repo_root).resolve()
     miles = Path(args.miles_root).resolve()
     megatron_lm = Path(args.megatron_lm_root).resolve()
@@ -161,6 +163,7 @@ def validate(args) -> dict:
 
     return {
         "ok": True,
+        "judge": judge,
         "repo_commit": repo_head,
         "repo_patch_sha256": repo_patch_sha256,
         "miles_commit": miles_head,
@@ -211,6 +214,7 @@ def main() -> int:
     parser.add_argument("--expected-miles-patch-sha256", default="")
     parser.add_argument("--allow-missing-e2b", action="store_true")
     parser.add_argument("--allow-dirty-source", action="store_true")
+    add_judge_arguments(parser)
     args = parser.parse_args()
     print(json.dumps(validate(args), sort_keys=True))
     return 0

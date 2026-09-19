@@ -495,7 +495,7 @@ class AsyncRLE2BTests(unittest.TestCase):
                     FakeSandbox(),
                     "prove this",
                     task,
-                    EpisodeConfig(model_path="fake", max_turns=1, max_total_tokens=32),
+                    EpisodeConfig(judge_mode="legacy", model_path="fake", max_turns=1, max_total_tokens=32),
                 ))
 
         self.assertEqual(result.status, "completed")
@@ -601,7 +601,7 @@ class AsyncRLE2BTests(unittest.TestCase):
                     sandbox,
                     "prove this",
                     task,
-                    EpisodeConfig(model_path="fake", max_turns=10, max_total_tokens=32),
+                    EpisodeConfig(judge_mode="legacy", model_path="fake", max_turns=10, max_total_tokens=32),
                 ))
 
         self.assertEqual(len(generate_calls), 1)
@@ -685,7 +685,7 @@ class AsyncRLE2BTests(unittest.TestCase):
                     FakeSandbox(),
                     "prove this",
                     task,
-                    EpisodeConfig(
+                    EpisodeConfig(judge_mode="legacy",
                         model_path="fake",
                         max_turns=10,
                         max_total_tokens=32,
@@ -751,7 +751,7 @@ class AsyncRLE2BTests(unittest.TestCase):
                     FakeSandbox(),
                     "prove this",
                     task,
-                    EpisodeConfig(model_path="fake", wall_time_budget_sec=0),
+                    EpisodeConfig(judge_mode="legacy", model_path="fake", wall_time_budget_sec=0),
                 ))
 
         self.assertEqual(grade_calls, [True])
@@ -849,6 +849,7 @@ class AsyncRLE2BTests(unittest.TestCase):
             args = SimpleNamespace(
                 prover_sandbox_concurrency=1,
                 prover_model_path="fake-model",
+                prover_judge_mode="legacy",
                 prover_max_turns=1,
                 prover_max_total_tokens=64,
                 prover_max_tokens_per_turn=16,
@@ -1071,6 +1072,7 @@ class AsyncRLE2BTests(unittest.TestCase):
                 over_sampling_multiplier=4,
                 zero_group_filtering=True,
                 dynamic_sampling_filter_path="rl.filters.check_clean_and_nonzero_std",
+                prover_comparator_queue_dir="/shared/data/comparator queue",
                 prover_max_total_tokens=32768,
                 prover_max_turns=64,
                 prover_max_tokens_per_turn=4096,
@@ -1113,6 +1115,9 @@ class AsyncRLE2BTests(unittest.TestCase):
                 topic_id="test-topic",
             )
             body = build_body(args)
+            self.assertEqual(body["Envs"]["PROVER_JUDGE_MODE"], "comparator")
+            self.assertEqual(body["Envs"]["PROVER_COMPARATOR_QUEUE_DIR"], "/shared/data/comparator queue")
+            self.assertTrue(body["Envs"]["PROVER_PROOF_ARTIFACTS_DIR"].endswith("/test-resume-source/proofs"))
             encoded = json.dumps(body)
             self.assertNotIn("do-not-leak", encoded)
             self.assertEqual(body["WorkspaceId"], "test-workspace")
@@ -1321,6 +1326,7 @@ class AsyncRLE2BTests(unittest.TestCase):
                 "GLOBAL_BATCH_SIZE": "256", "NO_LOAD_OPTIM": "1",
                 "OPTIMIZER_OFFLOAD_FRACTION": "0.0",
                 "RUN_ID": "TRACES_Verification_RL_fixture",
+                "PROVER_COMPARATOR_QUEUE_DIR": str(root / "comparator queue"),
             })
             result = subprocess.run(
                 ["bash", str(launcher)], env=env, check=True,
@@ -1337,6 +1343,9 @@ class AsyncRLE2BTests(unittest.TestCase):
                 "--global-batch-size": "256",
             }.items():
                 self.assertEqual(argv[argv.index(flag) + 1], expected)
+            self.assertEqual(argv[argv.index("--prover-judge-mode") + 1], "comparator")
+            self.assertEqual(argv[argv.index("--prover-comparator-queue-dir") + 1], str(root / "comparator queue"))
+            self.assertEqual(argv[argv.index("--prover-proof-artifacts-dir") + 1], str(root / "run" / "proofs"))
             self.assertNotIn("--sglang-attention-backend", argv)
             runtime = json.loads(
                 next(arg.split("=", 1)[1] for arg in argv if arg.startswith("--runtime-env-json="))
@@ -1350,6 +1359,8 @@ class AsyncRLE2BTests(unittest.TestCase):
             }.items():
                 self.assertEqual(runtime["env_vars"][key], expected)
             preflight = json.loads((root / "run" / "preflight.json").read_text())
+            for flag in ("--prover-judge-mode", "--prover-comparator-queue-dir", "--prover-proof-artifacts-dir"):
+                self.assertEqual(preflight[preflight.index(flag) + 1], argv[argv.index(flag) + 1])
             self.assertEqual(preflight[preflight.index("--nodes") + 1], "8")
             self.assertEqual(preflight[preflight.index("--actor-gpus") + 1], "32")
             self.assertEqual(preflight[preflight.index("--rollout-gpus") + 1], "32")
@@ -1412,6 +1423,9 @@ class AsyncRLE2BTests(unittest.TestCase):
                 "--prover-max-total-tokens": "131072", "--global-batch-size": "256",
             }.items():
                 self.assertEqual(argv[argv.index(flag) + 1], expected)
+            self.assertEqual(argv[argv.index("--prover-judge-mode") + 1], "comparator")
+            self.assertEqual(argv[argv.index("--prover-comparator-queue-dir") + 1], str(root / "comparator queue"))
+            self.assertEqual(argv[argv.index("--prover-proof-artifacts-dir") + 1], str(root / "run" / "proofs"))
             self.assertNotIn("--sglang-attention-backend", argv)
             self.assertIn("--eval-prompt-data", argv)
             preflight = json.loads((root / "run" / "preflight.json").read_text())

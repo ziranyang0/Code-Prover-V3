@@ -15,10 +15,12 @@ if __package__:
     from .checkpoint_compat import validate_resume_checkpoint
     from .source_fingerprint import git_source_fingerprint
     from .sandbox import e2b_connection_env
+    from .judge_config import add_judge_arguments, judge_options
 else:
     from checkpoint_compat import validate_resume_checkpoint
     from source_fingerprint import git_source_fingerprint
     from sandbox import e2b_connection_env
+    from judge_config import add_judge_arguments, judge_options
 
 DLC = "/etc/dsw/runtime/export_bin/aliyun"
 REGION = "ap-southeast-1"
@@ -134,6 +136,20 @@ def inspect_runtime_paths(args) -> dict:
         checks["previous_stage_eval_summary"] = _path_entry(
             Path(eval_summary).resolve(), "file", mount_root
         )
+    judge = judge_options(args, default_artifacts=str(run_root / (getattr(args, "run_id", None) or args.name) / "proofs"),
+                          validate=not bool(getattr(args, "load_debug_rollout_data", None)))
+    if judge["judge_mode"] != "legacy" and not getattr(args, "load_debug_rollout_data", None):
+        if judge["comparator_queue_dir"]:
+            checks["comparator_queue"] = _path_entry(Path(judge["comparator_queue_dir"]).resolve(), "directory", mount_root)
+        proof_dir = Path(judge["proof_artifacts_dir"]).resolve()
+        proof_ancestor = proof_dir
+        while not proof_ancestor.exists() and proof_ancestor != proof_ancestor.parent:
+            proof_ancestor = proof_ancestor.parent
+        checks["proof_artifacts_dir"] = {
+            "path": str(proof_dir), "kind": "writable_output_directory",
+            "ancestor_writable": proof_ancestor.is_dir() and os.access(proof_ancestor, os.W_OK),
+            "visible_from_data_mount": _under(proof_dir, mount_root),
+        }
     ancestor = run_root
     while not ancestor.exists() and ancestor != ancestor.parent:
         ancestor = ancestor.parent
@@ -151,7 +167,7 @@ def inspect_runtime_paths(args) -> dict:
 def _missing_submit_inputs(checks: dict) -> list[str]:
     missing = []
     for name, entry in checks.items():
-        if name == "run_root":
+        if entry["kind"] == "writable_output_directory":
             valid = entry["ancestor_writable"] and entry["visible_from_data_mount"]
         else:
             valid = entry["exists"] and entry["type_ok"] and entry["visible_from_data_mount"]
@@ -246,7 +262,12 @@ def build_body(args) -> dict:
     connection["E2B_VALIDATE_API_KEY"] = (
         "true" if getattr(args, "e2b_validate_api_key", True) else "false"
     )
+    judge = judge_options(
+        args, default_artifacts=str(Path(args.run_root).resolve() / run_id / "proofs"),
+        validate=not bool(getattr(args, "load_debug_rollout_data", None)),
+    )
     envs = {
+        **{"PROVER_" + key.upper(): str(value) for key, value in judge.items()},
         **connection,
         "RUN_ID": run_id,
         "ATTEMPT_ID": attempt_id,
@@ -465,6 +486,7 @@ def main() -> int:
     parser.add_argument("--prover-max-turns", type=int, default=64)
     parser.add_argument("--prover-max-tokens-per-turn", type=int, default=2048)
     parser.add_argument("--prover-max-truncation-nudges", type=int, default=1)
+    add_judge_arguments(parser)
     parser.add_argument("--prover-max-tool-result-tokens", type=int, default=4096)
     parser.add_argument("--prover-wall-time-budget-sec", type=int, default=1200)
     parser.add_argument("--prover-episode-timeout-sec", type=int, default=2400)

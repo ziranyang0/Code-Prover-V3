@@ -18,6 +18,7 @@ from pathlib import Path
 import httpx
 
 from rl.generate_with_prover import EpisodeConfig, run_episode
+from rl.judge_config import add_judge_arguments, judge_options, preflight_judge
 from rl.sandbox import DockerSandbox
 
 
@@ -58,12 +59,14 @@ async def main() -> int:
     ap.add_argument("--temperature", type=float, default=0.6)
     ap.add_argument("--dump-transcript", default=None,
                     help="write the decoded token stream (full conversation) here")
+    add_judge_arguments(ap)
     args = ap.parse_args()
+    preflight_judge(args)
 
     task_dir = Path(args.task)
     instruction = (task_dir / "instruction.md").read_text(encoding="utf-8")
     cfg = EpisodeConfig(model_path=args.model_path, max_turns=args.max_turns,
-                        docker_image=args.image)
+                        docker_image=args.image, **judge_options(args))
 
     print(f"[test] starting sandbox from {args.image} ...")
     sandbox = await DockerSandbox.create(image=args.image)
@@ -87,6 +90,7 @@ async def main() -> int:
         "masked_tokens": ep.response_length - n_trained,
         "reward": ep.reward,
         "rewards": ep.rewards,
+        "judge_details": ep.judge_details,
         "guard_events": ep.guard_events,
     }, indent=2, ensure_ascii=False))
 

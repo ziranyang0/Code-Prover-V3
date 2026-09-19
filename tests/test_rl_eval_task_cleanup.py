@@ -1,5 +1,6 @@
 """Exercise evaluation's actual task orchestration on failure and cancellation."""
 import asyncio
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -58,6 +59,23 @@ class EvaluationTaskCleanupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.cleaned, {8, 9})
         self.assertEqual(len(self.output.read_text().splitlines()), 8)
         self.assertFalse(self.output.with_suffix('.summary.json').exists())
+
+    async def test_completed_eval_preserves_comparator_audit_and_reward(self):
+        audit = {"mode": "comparator", "artifact_dir": "/durable/proofs/fixture",
+                 "comparator": {"accepted": True, "source_sha256": "fixture-hash"}}
+        async def generate(input):
+            sample = input.sample
+            sample.status = Sample.Status.COMPLETED
+            sample.reward = 1.0
+            sample.metadata.update(judge_details=audit, rewards={"comparator_accepted": 1.0})
+            return SimpleNamespace(samples=sample)
+
+        with self.imports(generate):
+            _, metrics = await self.run_eval(1)
+        row = json.loads(self.output.read_text())
+        self.assertEqual(row["metadata"]["judge_details"], audit)
+        self.assertEqual(row["metadata"]["rewards"]["comparator_accepted"], 1.0)
+        self.assertEqual(metrics["turn_16/pass@1"], 1.0)
 
     async def test_cancellation_waits_for_all_trial_cleanup(self):
         async def generate(input):

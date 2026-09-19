@@ -1,0 +1,27 @@
+name = "CodeProverComparator"
+version = "0.1.0"
+defaultTargets = ["codeprover_comparator", "codeprover_targets", "lean4export", "CodeProverCompile"]
+
+[[lean_lib]]
+name = "Comparator"
+
+[[lean_lib]]
+name = "CodeProverCompile"
+
+[[lean_exe]]
+name = "codeprover_comparator"
+root = "CodeProverMain"
+
+[[lean_exe]]
+name = "codeprover_targets"
+root = "CodeProverTargets"
+
+[[require]]
+name = "Lean4Checker"
+git = "https://github.com/leanprover/lean4checker"
+rev = "b7398199245524275543dec6113229c9bb4902e5"
+
+[[require]]
+name = "lean4export"
+git = "https://github.com/leanprover/lean4export"
+rev = "048394e1afeeb52b0fa27bcf3f1ade2ff0f0ab6d"

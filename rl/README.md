@@ -20,6 +20,23 @@ and an absolute `--mount-path`; the corresponding `DLC_WORKSPACE_ID`,
 can also supply them. Optional labels use `--topic-id` / `DLC_TOPIC_ID` and
 `--owner` / `DLC_JOB_OWNER`.
 
+## Default proof judge
+
+Training rollouts and `rl.evaluate` use **Comparator** by default, with independent
+Lean 4.28 kernel replay. Supply `--prover-comparator-queue-dir /shared/run/queue`
+for a CPU verifier service, or `--prover-comparator-image IMAGE` for local Docker.
+The DLC submitter stores proofs under `<run-root>/<run-id>/proofs` by default;
+override with `--prover-proof-artifacts-dir /durable/proofs`. It checks that paths
+are visible on the data mount. The launcher checks service/image availability and
+writable storage before models load. Queue capacity and timeout must cover the
+aggregate rollout traffic.
+
+Comparator infrastructure failures remain failed episodes and never become a
+normal zero reward or trigger fallback to the old judge. Evaluation JSONL retains
+judge details and proof locations. Choose `--prover-judge-mode shadow` explicitly
+for paired audits or `legacy` for historical reproduction. Existing Harbor task
+graders retain their frozen behavior. See [Comparator setup, pins and tests](../verifier/comparator/README.md).
+
 ## Image
 
 Build the public, digest-pinned Miles base from the Dockerfile:

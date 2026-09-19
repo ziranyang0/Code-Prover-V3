@@ -17,6 +17,7 @@ SOURCE_SCOPES = (
     "tools",
     "train.py",
     "train_async.py",
+    "verifier",
 )
 
 

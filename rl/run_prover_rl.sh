@@ -384,6 +384,14 @@ export LOAD_CHECKPOINT_DIR OPTIMIZER_OFFLOAD_FRACTION NO_LOAD_OPTIM SAVE_OPTIM
 export RESET_ROLLOUT_DATA_STATE
 mkdir -p "${RUN_DIR}" "${RUN_DIR}/checkpoints" "${RUN_DIR}/dump_details"
 
+PROVER_JUDGE_ARGS=(
+  --prover-judge-mode "${PROVER_JUDGE_MODE:-comparator}"
+  --prover-comparator-image "${PROVER_COMPARATOR_IMAGE:-}"
+  --prover-comparator-queue-dir "${PROVER_COMPARATOR_QUEUE_DIR:-}"
+  --prover-comparator-timeout-sec "${PROVER_COMPARATOR_TIMEOUT_SEC:-1200}"
+  --prover-comparator-concurrency "${PROVER_COMPARATOR_CONCURRENCY:-2}"
+  --prover-proof-artifacts-dir "${PROVER_PROOF_ARTIFACTS_DIR:-${RUN_DIR}/proofs}"
+)
 PREFLIGHT_MODE_ARGS=()
 if [[ -n "${LOAD_DEBUG_ROLLOUT_DATA}" ]]; then
   PREFLIGHT_MODE_ARGS+=(--training-only)
@@ -415,6 +423,7 @@ python3 "${REPO_ROOT}/rl/preflight.py" \
   --actor-expert-parallel-size "${EXPERT_PARALLEL}" \
   "${PREFLIGHT_LOAD_ARGS[@]}" \
   "${PREFLIGHT_MODE_ARGS[@]}" \
+  "${PROVER_JUDGE_ARGS[@]}" \
   --e2b-template "${E2B_TEMPLATE_ID}" \
   --expected-repo-commit "${CODEPROVER_SOURCE_COMMIT}" \
   --expected-repo-patch-sha256 "${CODEPROVER_PATCH_SHA256}" \
@@ -578,6 +587,7 @@ ray job submit \
     --custom-generate-function-path rl.generate_with_prover.generate \
     --prover-model-path "${HF_CHECKPOINT}" \
     --prover-task-root "${TASK_ROOT}" \
+    "${PROVER_JUDGE_ARGS[@]}" \
     --prover-sandbox-backend e2b \
     --prover-e2b-template "${E2B_TEMPLATE_ID}" \
     --prover-sandbox-concurrency "${PROVER_SANDBOX_CONCURRENCY}" \

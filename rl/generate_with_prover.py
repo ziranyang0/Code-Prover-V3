@@ -2,7 +2,7 @@
 
 One episode = one sandbox (docker or E2B) + a token-level agent loop speaking
 the qwen-native-v1 dialect against miles' sglang router, graded at the end by
-the task's own verifier (tests/grade.py) inside the sandbox.
+the independent Comparator backend (Lean/Mathlib 4.28).
 
 Wire-up (miles launch flags):
     --custom-generate-function-path rl.generate_with_prover.generate
@@ -44,6 +44,10 @@ from agents.qwen_native_agent import (  # noqa: E402
     TRUNCATION_NUDGE_PROMPT,
     QwenNativeAgent,
     _READONLY_TOOLS,
+)
+from rl.judge_config import (  # noqa: E402
+    DEFAULT_JUDGE_MODE, JUDGE_DEFAULTS, add_judge_arguments, judge_options,
+    validate_judge_options,
 )
 from rl.sandbox import create_sandbox  # noqa: E402
 from rl.diagnostics import (  # noqa: E402
@@ -89,6 +93,12 @@ class EpisodeConfig:
     wall_time_budget_sec: int = 1200
     episode_timeout_sec: int = 2400
     router_timeout_sec: int = 180
+    judge_mode: str = DEFAULT_JUDGE_MODE
+    comparator_image: str = ""
+    comparator_queue_dir: str = ""
+    comparator_timeout_sec: int = 1200
+    comparator_concurrency: int = 2
+    proof_artifacts_dir: str = ""
 
 
 @dataclasses.dataclass
@@ -116,6 +126,7 @@ class EpisodeResult:
     early_compile_probes: int = 0
     early_compile_successes: int = 0
     episode_wall_time_sec: float = 0.0
+    judge_details: dict = dataclasses.field(default_factory=dict)
 
     @property
     def response_length(self) -> int:
@@ -238,6 +249,7 @@ async def run_episode(
     """Drive one full episode. `generate_fn(input_ids, remaining_tokens) -> dict` must return
     {"token_ids": [...], "logprobs": [...], "finish_reason": "stop"|"length",
      "text": str} for one assistant turn."""
+    validate_judge_options({name: getattr(cfg, name) for name in JUDGE_DEFAULTS})
     set_phase("initialization")
     episode_started = time.monotonic()
     generation_time_sec = 0.0
@@ -480,8 +492,13 @@ async def run_episode(
     if len(ts.tokens) > cfg.max_total_tokens:
         raise RuntimeError("episode token budget invariant violated")
     set_phase("verification")
+    judge_details = {}
     with operation("verifier.grade"):
-        reward, rewards = await _grade(sandbox, tests_dir)
+        if cfg.judge_mode == "legacy":
+            reward, rewards = await _grade(sandbox, tests_dir)
+        else:
+            from rl.comparator_judge import grade_with_comparator
+            reward, rewards, judge_details = await grade_with_comparator(sandbox, tests_dir, cfg, _grade)
     return EpisodeResult(
         tokens=ts.tokens,
         prompt_len=ts.prompt_len,
@@ -490,6 +507,7 @@ async def run_episode(
         status=status,
         reward=reward,
         rewards=rewards,
+        judge_details=judge_details,
         n_turns=n_turns,
         stop_detail=stop_detail,
         guard_events=guard_events,
@@ -568,6 +586,7 @@ def add_arguments(parser):
                         choices=["docker", "e2b"])
     parser.add_argument("--prover-docker-image", type=str,
                         default="lizenan1995/code-prover-lean:latest")
+    add_judge_arguments(parser)
     parser.add_argument("--prover-e2b-template", type=str, default="")
     parser.add_argument("--prover-max-turns", type=int, default=64)
     parser.add_argument("--prover-max-total-tokens", type=int, default=65536)
@@ -610,11 +629,14 @@ def effective_episode_timeout(args) -> int:
     minimum = (args.prover_wall_time_budget_sec + args.prover_router_timeout_sec
                + GRADE_UPLOAD_TIMEOUT_SEC + GRADE_TIMEOUT_SEC
                + GRADE_REWARD_TIMEOUT_SEC + EPISODE_SCHEDULING_MARGIN_SEC)
+    if getattr(args, "prover_judge_mode", DEFAULT_JUDGE_MODE) != "legacy":
+        minimum += getattr(args, "prover_comparator_timeout_sec", 1200) + 300
     return max(args.prover_episode_timeout_sec, minimum)
 
 
 def _episode_config(args) -> EpisodeConfig:
     return EpisodeConfig(
+        **judge_options(args),
         model_path=args.prover_model_path,
         max_turns=args.prover_max_turns,
         max_total_tokens=args.prover_max_total_tokens,
@@ -875,6 +897,7 @@ async def generate(input):
     sample.metadata = {
         **meta,
         "rewards": ep.rewards,
+        "judge_details": ep.judge_details,
         "n_turns": ep.n_turns,
         "stop_detail": ep.stop_detail,
         "prompt_tokens": ep.prompt_len,

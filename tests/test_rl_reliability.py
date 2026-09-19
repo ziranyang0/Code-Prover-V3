@@ -138,8 +138,8 @@ class GroupRecoveryTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.module, "time", clock):
             result = await self.collect(lambda: (9, [healthy]))
         self.assertEqual(result.samples, [[healthy]])
-        self.assertEqual(self.args.prover_episode_timeout_sec, 5170)
-        self.assertEqual(self.args.prover_async_no_progress_timeout_sec, 5470)
+        self.assertEqual(self.args.prover_episode_timeout_sec, 6670)
+        self.assertEqual(self.args.prover_async_no_progress_timeout_sec, 6970)
 
     async def test_invalid_progress_timeout_is_not_hidden_by_budget_expansion(self):
         self.args.prover_wall_time_budget_sec = 2400
@@ -550,7 +550,7 @@ class GenerationBudgetTests(unittest.IsolatedAsyncioTestCase):
                  patch.object(prover, "_grade", grader):
                 try:
                     return await prover.run_episode(generate, SimpleNamespace(upload_file=AsyncMock()),
-                        "proof", task, prover.EpisodeConfig(model_path="fake", max_turns=1,
+                        "proof", task, prover.EpisodeConfig(judge_mode="legacy", model_path="fake", max_turns=1,
                         max_total_tokens=32, wall_time_budget_sec=.02, router_timeout_sec=.03))
                 finally:
                     if hang_tool or inner_timeout:
@@ -640,7 +640,7 @@ class VerificationPhaseBudgetTests(unittest.IsolatedAsyncioTestCase):
 class VerificationBudgetTests(unittest.TestCase):
     def test_current_campaign_budget_covers_verifier_and_last_request(self):
         from rl.generate_with_prover import effective_episode_timeout, GRADE_TIMEOUT_SEC
-        args = SimpleNamespace(prover_wall_time_budget_sec=2400,
+        args = SimpleNamespace(prover_judge_mode="legacy", prover_wall_time_budget_sec=2400,
                                prover_router_timeout_sec=900, prover_episode_timeout_sec=3300)
         self.assertEqual(GRADE_TIMEOUT_SEC, 1320)
         self.assertEqual(effective_episode_timeout(args), 5170)
@@ -749,7 +749,7 @@ class DiagnosticTests(unittest.IsolatedAsyncioTestCase):
             diagnostics.set_phase("tool")
             raise prover.GenerationTimeout("generation/tool phase exhausted")
         args = SimpleNamespace(prover_sandbox_concurrency=1, prover_task_root="unused")
-        cfg = prover.EpisodeConfig(model_path="fake", episode_timeout_sec=10)
+        cfg = prover.EpisodeConfig(judge_mode="legacy", model_path="fake", episode_timeout_sec=10)
         fake_types = SimpleNamespace(Sample=Sample)
         fake_output = SimpleNamespace(GenerateFnOutput=SimpleNamespace)
         with patch.dict(sys.modules, {"miles.utils.types": fake_types,
@@ -778,7 +778,7 @@ class DiagnosticTests(unittest.IsolatedAsyncioTestCase):
             with diagnostics.operation("verifier.exec"):
                 await asyncio.Event().wait()
         args = SimpleNamespace(prover_sandbox_concurrency=1, prover_task_root="unused")
-        cfg = prover.EpisodeConfig(model_path="fake", episode_timeout_sec=.01)
+        cfg = prover.EpisodeConfig(judge_mode="legacy", model_path="fake", episode_timeout_sec=.01)
         fake_types = SimpleNamespace(Sample=Sample)
         fake_output = SimpleNamespace(GenerateFnOutput=SimpleNamespace)
         with patch.dict(sys.modules, {"miles.utils.types": fake_types,
@@ -808,7 +808,7 @@ class DiagnosticTests(unittest.IsolatedAsyncioTestCase):
             with diagnostics.operation("verifier.exec"):
                 raise TimeoutError("request deadline")
         args = SimpleNamespace(prover_sandbox_concurrency=1, prover_task_root="unused")
-        cfg = prover.EpisodeConfig(model_path="fake", episode_timeout_sec=3300)
+        cfg = prover.EpisodeConfig(judge_mode="legacy", model_path="fake", episode_timeout_sec=3300)
         fake_types = SimpleNamespace(Sample=Sample)
         fake_output = SimpleNamespace(GenerateFnOutput=SimpleNamespace)
         with patch.dict(sys.modules, {"miles.utils.types": fake_types,

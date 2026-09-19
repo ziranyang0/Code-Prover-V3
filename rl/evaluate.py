@@ -69,7 +69,8 @@ async def evaluate_records(args, records, *, budgets, samples_per_prompt, output
                 sampling_params={**sampling, "sampling_seed": sample_seed}, evaluation=True))
             sample = generated.samples
             keys = ("stop_detail", "prompt_tokens", "model_generated_tokens", "tool_and_feedback_tokens",
-                    "synthetic_tokens", "length_limited_turns", "n_turns", "tool_calls", "episode_wall_time_sec")
+                    "synthetic_tokens", "length_limited_turns", "n_turns", "tool_calls", "episode_wall_time_sec",
+                    "judge_details", "rewards", "task_sha256", "tests_sha256")
             result = {"task_name": record["metadata"]["task_name"], "domain": record["metadata"].get("domain"),
                       "group_index": gi, "sample_index": si, "sampling_seed": sample_seed,
                       "turn_budget": budget, "reward": sample.reward, "status": sample.status.name,
